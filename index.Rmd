@@ -1,0 +1,197 @@
+---
+title: "Milestone Report: Exploratory Analysis, Algorithm and App Goals"
+author: "Kim Kirk"
+date: "11/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exploratory Analysis: Data downloaded and loaded into R Studio
+
+Data was downloaded and loaded into R Studio. Systematic sampling was performed on the data to reduce the size of the data set and still provide a representative sample of the data.
+
+```{r}
+library(readtext)
+library(tidytext)
+library(dplyr)
+library(ggplot2)
+library(cld2)
+library(cld3)
+library(readxl)
+library(stringr)
+library(R.utils)
+library(lexicon)
+library(qdap)
+library(tm)
+library(magrittr)
+library(textclean)
+library(hunspell)
+```
+    
+    #download and unzip the zipped corpus file
+    set file path to save download to
+    path <- file.path(paste(getwd(), 'Coursera-SwiftKey.zip', sep = "/"))  
+    
+    ##set url for download
+    url <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"  
+
+
+    ##download file and save to working directory
+    download.file(url, path)
+
+    #unzip the file in the working directory
+    unzip(path,exdir=getwd())
+
+    #set working directory
+    setwd("~/R Projects/Final Work for Capstone Project")
+
+
+    #get the text sample for the corpus  
+
+    sample_corpus <- function(corpusSampleFile = "corpusSampleFileTwitter.txt", dataset = "twitter") {
+    #create a text file to save sample of corpus
+    corpusSampleFile <- file(corpusSampleFile)
+    #create the connection to the zipped file based on what data set is incoming
+    if(dataset == "twitter") {
+        connection <- file(paste(getwd(), 'final', 'en_US', 'en_US.twitter.txt', sep = "/"), open = "rb", encoding = "UTF-8")
+    } else if (dataset == "blogs") {
+        connection <- file(paste(getwd(), 'final', 'en_US', 'en_US.blogs.txt', sep = "/"), open = "rb", encoding = "UTF-8")
+    } else {
+        connection <- file(paste(getwd(), 'final', 'en_US', 'en_US.news.txt', sep = "/"), open = "rb", encoding = "UTF-8")
+    }
+    
+    #set number of lines to skip for systematic sampling, when to stop sampling
+    if(dataset == "twitter") {
+        skip_value = 142
+        stop = 16472
+    } else if (dataset == "news") {
+        skip_value = 62
+        stop = 16320
+    } else {
+        skip_value = 55
+        stop = 16287
+    }
+    
+    #open the file to write to and make ithe connection binary
+    open(corpusSampleFile, "wb")
+    
+    #start count for number of lines in document
+    num_rows = 0
+    lines_read = 0
+    
+    while( TRUE ) {
+        #read lines from the connection and save into variable, test to see if no more lines
+        #read one line at a time from corpus into memory to preserve space
+        document <- readLines(connection, n = 1, warn = TRUE)
+        
+        if (lines_read == stop) {
+            break
+        } else if(num_rows %% skip_value == 0) {
+            writeLines(document, corpusSampleFile)
+            lines_read = lines_read + 1
+            num_rows = num_rows + 1
+        } else {
+            num_rows = num_rows + 1
+            next
+        }
+        
+    }
+    #close the connection to the corpus and file
+    close(corpusSampleFile)
+    close(connection)
+}
+
+    #get the sample from each corpus
+    sample_corpus()
+    sample_corpus("corpusSampleFileNews.txt", "news")
+    sample_corpus("corpusSampleFileBlogs.txt", "blogs")
+
+
+    #put all samples into one data frame
+    allSamplesDataFrame <- readtext(paste(getwd(), 'final', 'en_US', 'Samples', sep = "/"), text_field = 1, encoding = "UTF-8")
+
+## Exporatory Analysis: Summaries
+
+Word counts, line counts, and data tables were created to generate summaries of the three word files.
+
+```{r}
+#tokenize the dataframe
+    #tokenize by word
+tokenize_this <- function(a_file){
+    tokenized_dataframe <- a_file %>% unnest_tokens(token, text, strip_punct = TRUE)
+    return (tokenized_dataframe)
+    
+}
+
+allSamplesTokenized <- tokenize_this(allSamplesDataFrame)
+
+
+
+# basic summaries of the three files? Word counts, line counts and basic data tables
+#find the frequency of words in the text: create relative and cumulative frequency table
+frequencyTables <- function(x = allSamplesTokenized) {
+    x %>% count(token, sort = TRUE) %>% arrange(n) %>% mutate(rel_freq = n/sum(n), cum_freq = cumsum(rel_freq))
+}
+
+
+#word counts and line count summaries
+summaries <- function(corpus_name) {
+    setwd("~/R Projects/Final Work for Capstone Project/final/en_US/Samples")
+    #line count
+    print("Line count: ")
+    print(countLines(corpus_name))
+    #word count
+    print("Word count: ")
+    print(str(allSamplesTokenized[allSamplesTokenized$doc_id == corpus_name,2]))
+}
+
+summaries("en_Blogs_corpusSampleFile.txt")
+summaries("en_News_corpusSampleFile.txt")
+summaries("en_Twitter_corpusSampleFile.txt")
+
+#data tables
+uniGramFrequencyTable <- frequencyTables()
+
+```
+
+## Exploratory Analysis: Plots 
+
+Basic plots were created to further illustrate the nature of the data and uncover interesting findings.
+
+```{r}
+#basic plots, such as histograms to illustrate features of the data
+#create a histogram to see distribution of tokens by length
+hist(sapply(allSamplesTokenized$token, nchar), col = "purple", xlab = "Token Size", main = "Word Token Size" )
+#add lines to more easily identify value points on histogram
+rug(sapply(allSamplesTokenized$token, nchar), side = 1)
+#exploring the dimensions of the data frame
+glimpse(allSamplesTokenized)
+#getting a summary of the data frame
+summary(allSamplesTokenized$token)
+#visualize the tokens and their frequency in the data frame
+barplot(table(allSamplesTokenized$token), col = "wheat", xlab = "Word Token", ylab = "Frequency", main = "Sample Word Token Frequency")
+#check for outliers
+#create a box plot to see outliers
+    #check how many outliers first
+    #if small, delete outliers
+boxplot(nchar(allSamplesTokenized$token ~ allSamplesTokenized$token), xlab = 'Count',
+        ylab = 'Token', col = 'green', horizontal = TRUE)
+#it looks like no outliers in the data
+    #however the data is very heavily skewed with the median, 3rd quartile, and max value being equal; this means the data is not normally distributed and I will need to likely use a non-parametric test
+
+```
+
+
+## Exploratory Analysis: Interesting Findings
+
+You can see in the boxplot above that word length for data is left skewed, possibly due to social media hashtags in the data set (these include run on words that make word size longer).
+
+
+## Algorithm and App Goals: Model Prediction and Deployment to Shiny Apps Cloud
+
+The objective is to determine the next word based on previous word(s) used. A Markov Chain will fit this purpose well. A Markov Chain model should be able to determine the next word the user will type.
+
+After the machine learning model is trained, I will use it in a Shiny App and deploy it to the cloud where users can type in their word of choice and the model will predict the next word they will type.
